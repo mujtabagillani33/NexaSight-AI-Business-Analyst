@@ -9,6 +9,25 @@ import shutil
 import streamlit as st
 import pandas as pd
 
+# >>> FIX: ensure asyncio event loop exists (Python 3.13 + gRPC aio)
+import asyncio
+def _ensure_event_loop():
+    """
+    Make sure the current thread has an asyncio event loop.
+    Needed for google generative ai gRPC aio on Streamlit Cloud / Python 3.13.
+    """
+    try:
+        # Will raise RuntimeError if no running loop in this thread
+        asyncio.get_running_loop()
+    except RuntimeError:
+        # Create and set a fresh loop for this thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+# Initialize a loop for the main thread at import time
+_ensure_event_loop()
+# <<< FIX
+
 # --- PDF readers (graceful fallback) ---
 try:
     import pdfplumber
@@ -281,10 +300,14 @@ def _file_fingerprint(file_bytes: bytes, filename: str) -> str:
 
 @st.cache_resource(show_spinner=False)
 def get_embeddings():
+    # >>> FIX: ensure loop for whichever thread runs this cached factory
+    _ensure_event_loop()
     return GoogleGenerativeAIEmbeddings(model="models/embedding-001")
 
 @st.cache_resource(show_spinner=False)
 def get_llm():
+    # >>> FIX: same safeguard for LLM client (also uses google genai under the hood)
+    _ensure_event_loop()
     # MODEL UNCHANGED
     return ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.2)
 
@@ -745,10 +768,3 @@ if not REPORTLAB_AVAILABLE and not DOCX_AVAILABLE:
     pass
 if not PDFPLUMBER_AVAILABLE and 'PYPDF_AVAILABLE' in globals() and not PYPDF_AVAILABLE:
     st.info("Tip: Install 'pdfplumber' or 'pypdf' to read PDFs: pip install pdfplumber pypdf")
-
-
-
-
-
-
-
